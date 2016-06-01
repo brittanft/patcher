@@ -6,7 +6,7 @@ import java.security.*;
 import java.util.*;
 
 import org.summoners.cache.*;
-import org.summoners.cache.util.*;
+import org.summoners.cache.structure.*;
 import org.summoners.patcher.patch.*;
 import org.summoners.patcher.worker.*;
 import org.summoners.util.*;

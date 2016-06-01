@@ -9,7 +9,7 @@ import org.apache.http.client.methods.*;
 import org.apache.http.client.utils.*;
 import org.apache.http.impl.client.*;
 import org.summoners.cache.*;
-import org.summoners.cache.util.*;
+import org.summoners.cache.structure.*;
 import org.summoners.patcher.patch.impl.*;
 import org.summoners.patcher.worker.*;
 import org.summoners.util.*;

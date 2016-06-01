@@ -1,18 +1,10 @@
 package org.summoners.patcher;
 
-import java.io.*;
 import java.util.*;
-import java.util.Map.Entry;
-import java.util.stream.*;
 
 import org.summoners.patcher.patch.*;
-import org.summoners.util.*;
 
 public class Patcher {
-	
-	public static void main(String[] args) {
-		System.out.println(-1654783749L & 0xFFFFFFFFL);
-	}
 	
 	public Patcher() {
 		Versions.initVersions(server, language);
