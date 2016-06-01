@@ -29,6 +29,7 @@ public class SLNPatchTask extends CopyTask {
 				RiotFileUtil.getRADSFile("solutions/lol_game_client_sln/releases/" + slnVersion + "/deploy/"), true);
 		this.slnVersion = slnVersion;
 		this.force = force;
+		setName("Summoners-SLN-Patcher-Task");
 	}
 	
 	/**

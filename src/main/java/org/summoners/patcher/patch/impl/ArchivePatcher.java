@@ -60,6 +60,7 @@ public class ArchivePatcher extends PatchTask {
 		this.ignoreOk = ignoreOk;
 		this.forced = forced;
 		this.filter = filter;
+		setName("Summoners-" + project + "-Patcher-Task");
 	}
 	
 	/**
@@ -337,7 +338,7 @@ public class ArchivePatcher extends PatchTask {
 					}
 					files.removeAll(pkgWorker.downloadRanges(this));
 					downloadProgress = 0;
-				} catch (IOException e) {
+				} catch (IOException | URISyntaxException e) {
 					e.printStackTrace();
 				}
 			}

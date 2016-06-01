@@ -10,7 +10,18 @@ import org.summoners.cache.*;
 import org.summoners.patcher.*;
 import org.summoners.patcher.patch.*;
 
+/**
+ * The patcher task to load all relevant configuration.
+ * @author Brittan Thomas
+ */
 public class ConfigurationTask extends PatchTask {
+	
+	/**
+	 * Instantiates a new configuration task.
+	 */
+	public ConfigurationTask() {
+		setName("Summoners-Configuration-Task");
+	}
 
 	/* (non-Javadoc)
 	 * @see org.summoners.patcher.patch.PatchTask#patch()

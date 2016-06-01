@@ -1,14 +1,19 @@
 package org.summoners.patcher.worker.impl;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.logging.*;
 import java.util.stream.*;
 
+import org.apache.http.client.methods.*;
+import org.apache.http.client.utils.*;
+import org.apache.http.impl.client.*;
 import org.summoners.cache.*;
 import org.summoners.cache.pkg.*;
 import org.summoners.cache.pkg.Package;
-import org.summoners.http.*;
+import org.summoners.math.*;
 import org.summoners.patcher.patch.impl.*;
 import org.summoners.patcher.worker.*;
 import org.summoners.util.*;
@@ -42,7 +47,7 @@ public class PackageWorker extends Worker {
 	/**
 	 * The list of the list of ranges for each bin.
 	 */
-	private LinkedHashMap<String, LinkedList<Range>> ranges = new LinkedHashMap<>();
+	private LinkedHashMap<String, LinkedList<Range2l>> ranges = new LinkedHashMap<>();
 	
 	/**
 	 * A map converting bin name to package.
@@ -53,11 +58,6 @@ public class PackageWorker extends Worker {
 	 * A map converting bin name to package file.
 	 */
 	private LinkedHashMap<String, PackageFile> fileMap = new LinkedHashMap<>(); // name -> packf
-	
-	/**
-	 * The HttpClient instance for downloading.
-	 */
-	private HttpClient client;
 	
 	/**
 	 * The total amount of bytes read.
@@ -79,41 +79,37 @@ public class PackageWorker extends Worker {
 	 * @param version
 	 *            the version
 	 * @param culledFiles
-	 * 			  the list of culled files needing patches
+	 *            the list of culled files needing patches
 	 * @throws IOException
 	 *             Signals that an I/O exception has occurred.
+	 * @throws URISyntaxException
+	 *             the URI syntax exception
 	 */
 	public PackageWorker(String branch, String project, String version, LinkedList<RiotFileManifest> culledFiles) throws IOException {
 		this.version = version;
 		this.branch = branch;
 		this.project = project;
 		this.culledFiles = culledFiles;
-		this.client = new HttpClient("l3cdn.riotgames.com");
-		this.client.throwExceptionWhenNot200 = true;
-		this.client.setErrorHandler(HTTP_ERROR_HANDLER);
-		
-		HttpResult result = client.get("/releases/" + branch + "/projects/" + project + "/releases/" + version + "/packages/files/packagemanifest");
-		readManifest(result.getInputStream());
-	}
 
-	/**
-	 * Reads the manifest from the specified InputStream.
-	 *
-	 * @param inputStream
-	 *            the input stream resulting from the HttpResult
-	 * @throws IOException
-	 *             Signals that an I/O exception has occurred.
-	 */
-	private void readManifest(InputStream inputStream) throws IOException {
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-			String header = reader.readLine();
-			Validate.require(header.equals("PKG1"), () -> "Header does not equal PKG1. Actual header is: " + header, IOException.class);
-			String line;
-			while ((line = reader.readLine()) != null) {
-				String[] description = line.split(",");
-				fileMap.put(description[0], new PackageFile(description));
+		URIBuilder builder = new URIBuilder().setScheme("http").setHost("l3cdn.riotgames.com")
+								.setPath("/releases/" + branch + "/projects/" + project + "/releases/" + version + "/packages/files/packagemanifest");
+		try {
+			try (CloseableHttpClient client = HttpUtil.getDefaultClient()) {
+				try (CloseableHttpResponse response = client.execute(HttpUtil.getRequest(builder.build(), "l3cdn.riotgames.com"))) {
+					Validate.require(response.getStatusLine().getStatusCode() == 200, "Http responded with invalid code." + response.getStatusLine().getStatusCode(), IOException.class);
+					try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))) {
+						Validate.check(reader.readLine(), h -> h.equals("PKG1"), h -> "Header does not equal PKG1. Actual header is: " + h, IOException.class);
+						String line;
+						while ((line = reader.readLine()) != null) 
+							fileMap.put(line.split(",")[0], new PackageFile(line.split(",")));
+					}
+				}
 			}
+		} catch (URISyntaxException exception) {
+			Logger.getLogger(PackageWorker.class.getName()).log(Level.SEVERE, null, exception);
 		}
+		
+		setName("Summoners-Package-Worker");
 	}
 	
 	/**
@@ -161,11 +157,11 @@ public class PackageWorker extends Worker {
 		
 		packages.values().stream().forEach(pkg -> pkg.getFiles().sort((p1, p2) -> Long.compare(p1.getOffset(), p2.getOffset())));
 		for (Entry<String, Package> entry : packages.entrySet()) {
-			LinkedList<Range> rangeList = ranges.computeIfAbsent(entry.getKey(), s -> new LinkedList<>());
+			LinkedList<Range2l> rangeList = ranges.computeIfAbsent(entry.getKey(), s -> new LinkedList<>());
 			for (PackageFile pkgFile : entry.getValue().getFiles()) {
-				Range last = rangeList.isEmpty() ? null : rangeList.getLast();
+				Range2l last = rangeList.isEmpty() ? null : rangeList.getLast();
 				if (last == null || pkgFile.getOffset() > last.getMaximum()) {
-					last = new Range(pkgFile.getOffset(), pkgFile.getOffset() + pkgFile.getSize());
+					last = new Range2l(pkgFile.getOffset(), pkgFile.getOffset() + pkgFile.getSize());
 					rangeList.add(last);
 				} else
 					last.setMaximum(Math.max(last.getMaximum(), pkgFile.getOffset() + pkgFile.getSize()));
@@ -173,13 +169,13 @@ public class PackageWorker extends Worker {
 		}
 		
 		total = 0;
-		for (LinkedList<Range> list : ranges.values())
-			for (Range range : list)
+		for (LinkedList<Range2l> list : ranges.values())
+			for (Range2l range : list)
 				total += range.getSpan();
 	}
 	
 	/**
-	 * Download the ranges using the HttpClient.
+	 * Download the ranges using an {@link CloseableHttpClient}.
 	 *
 	 * @param patcher
 	 *            the active patcher instance
@@ -188,33 +184,42 @@ public class PackageWorker extends Worker {
 	 *             the file not found exception
 	 * @throws IOException
 	 *             Signals that an I/O exception has occurred.
+	 * @throws URISyntaxException
+	 *             the URI syntax exception
 	 */
-	public LinkedList<RiotFileManifest> downloadRanges(ArchivePatcher patcher) throws FileNotFoundException, IOException {
+	public LinkedList<RiotFileManifest> downloadRanges(ArchivePatcher patcher) throws FileNotFoundException, IOException, URISyntaxException {
 		lastSyncTime = System.currentTimeMillis();
 		long total = 0;
-		
-		for (Entry<String, LinkedList<Range>> entry : ranges.entrySet()) {
-			LinkedList<Range> rangeList = entry.getValue();
-			for (Range range : rangeList) {
-				HttpResult result = client.get("/releases/" + branch + "/projects/" + project + "/releases/" + version
-									+ "/packages/files/" + entry.getKey(), range.getMinimum(), range.getMaximum() - 1);
-				int read; long offset = range.getMinimum(); byte[] buffer = new byte[1024];
-				while ((read = result.getInputStream().read(buffer)) != -1) {
-					pushBytes(read, offset, buffer, entry.getKey(), patcher);
-					record(read);
-					total += read; offset += read;
-					Validate.requireFalse(offset > range.getMaximum(), "More bytes received than expected.", IOException.class);
-					patcher.setDownloadProgress(100F * total / this.total);
-					if (patcher.isFinished())
-						return new LinkedList<>();
+
+		URIBuilder builder = new URIBuilder().setScheme("http").setHost("l3cdn.riotgames.com");
+		try (CloseableHttpClient client = HttpUtil.getDefaultClient()) {
+			for (Entry<String, LinkedList<Range2l>> entry : ranges.entrySet()) {
+				LinkedList<Range2l> rangeList = entry.getValue();
+				for (Range2l range : rangeList) {
+					URI uri = builder.setPath("/releases/" + branch + "/projects/" + project + "/releases/" + version
+														+ "/packages/files/" + entry.getKey()).build();
+					try (CloseableHttpResponse response = client.execute(HttpUtil.getRequest(uri, "l3cdn.riotgames.com", false, range))) {
+						try (InputStream inputStream = response.getEntity().getContent()) {
+							Validate.require(response.getStatusLine().getStatusCode() == 200, "Http responded with invalid code." + response.getStatusLine().getStatusCode(), IOException.class);
+							int read; long offset = range.getMinimum(); byte[] buffer = new byte[1024];
+							while ((read = inputStream.read(buffer)) != -1) {
+								pushBytes(read, offset, buffer, entry.getKey(), patcher);
+								record(read);
+								total += read; offset += read;
+								Validate.requireFalse(offset > range.getMaximum(), "More bytes received than expected.", IOException.class);
+								patcher.setDownloadProgress(100F * total / this.total);
+								if (patcher.isFinished())
+									return new LinkedList<>();
+							}
+
+							Package pkg = packages.get(entry.getKey());
+							for (PackagedData file : pkg.getPackagedData())
+								file.getOutputStream().close();
+							
+							pkg.getPackagedData().clear();
+						}
+					}
 				}
-				
-				result.getInputStream().close();
-				Package pkg = packages.get(entry.getKey());
-				for (PackagedData file : pkg.getPackagedData())
-					file.getOutputStream().close();
-				
-				pkg.getPackagedData().clear();
 			}
 		}
 		

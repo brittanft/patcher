@@ -35,6 +35,7 @@ public class ArchivePurgeTask extends PatchTask {
 		this.project = project;
 		this.version = version;
 		this.type = type;
+		setName("Summoners-" + project + "-Purger-Task");
 	}
 	
 	/**

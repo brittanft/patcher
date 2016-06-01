@@ -38,6 +38,7 @@ public class RunTask extends PatchTask {
 		this.runnable = runnable;
 		this.description = description;
 		this.stop = stop;
+		setName("Summoners-" + description + "-Task");
 	}
 	
 	/**

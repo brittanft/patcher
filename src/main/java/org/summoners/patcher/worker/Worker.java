@@ -6,7 +6,6 @@ import java.util.*;
 import java.util.logging.*;
 
 import org.summoners.cache.*;
-import org.summoners.http.*;
 import org.summoners.patcher.patch.impl.*;
 
 /**
@@ -170,12 +169,4 @@ public abstract class Worker extends Thread {
 			last = now;
 		}
 	}
-	
-	/**
-	 * The default HTTP error handler.
-	 */
-	protected static final ErrorHandler<Exception> HTTP_ERROR_HANDLER = (ErrorHandler<Exception>) e -> {
-		System.out.println("Connection issues... retrying in 5 seconds.");
-		return 5000;
-	};
 }

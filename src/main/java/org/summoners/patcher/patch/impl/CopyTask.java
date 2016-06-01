@@ -40,6 +40,7 @@ public class CopyTask extends PatchTask {
 		this.source = source;
 		this.destination = destination;
 		this.merge = merge;
+		setName("Summoners-Copy-Task");
 	}
 	
 	/**

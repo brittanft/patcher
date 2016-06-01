@@ -6,10 +6,13 @@ import java.security.*;
 import java.util.logging.*;
 import java.util.zip.*;
 
+import org.apache.http.client.methods.*;
+import org.apache.http.client.utils.*;
+import org.apache.http.impl.client.*;
 import org.summoners.cache.*;
-import org.summoners.http.*;
 import org.summoners.patcher.patch.impl.*;
 import org.summoners.patcher.worker.*;
+import org.summoners.util.*;
 
 /**
  * The file download worker.
@@ -38,6 +41,8 @@ public class FileWorker extends Worker {
 	 *
 	 * @param manifest
 	 *            the file manifest being downloaded
+	 * @param builder
+	 *            the pre-set URI builder
 	 * @param client
 	 *            the http client doing the downloading
 	 * @throws MalformedURLException
@@ -46,8 +51,10 @@ public class FileWorker extends Worker {
 	 *             Signals that an I/O exception has occurred.
 	 * @throws NoSuchAlgorithmException
 	 *             the no such algorithm exception
+	 * @throws URISyntaxException 
+	 * 			   the uri syntax exception
 	 */
-	private void download(RiotFileManifest manifest, HttpClient client) throws MalformedURLException, IOException, NoSuchAlgorithmException {
+	private void download(RiotFileManifest manifest, URIBuilder builder, CloseableHttpClient client) throws MalformedURLException, IOException, NoSuchAlgorithmException, URISyntaxException {
 		progress = 0F;
 		alternative = false;
 		File targetDir = new File(patcher.getFileDirectory(manifest));
@@ -61,24 +68,26 @@ public class FileWorker extends Worker {
 		}
 		
 		progress = 0F;
-		String url = "/releases/" + patcher.getBranch() + "/projects/" + patcher.getProject() + "/releases/" + manifest.getRelease() 
+		URI uri = builder.setPath("/releases/" + patcher.getBranch() + "/projects/" + patcher.getProject() + "/releases/" + manifest.getRelease() 
 					+ "/files/" + manifest.getPath().replaceAll(" ", "%20") + manifest.getName().replaceAll(" ", "%20")
-					+ (manifest.getFileType().ordinal() > 0 ? ".compressed" : "");
+					+ (manifest.getFileType().ordinal() > 0 ? ".compressed" : "")).build();
 		
-		HttpResult result = client.get(url);
-		InputStream fileStream = result.getInputStream();
-		
-		long total = 0L;
-		try (InputStream input = (manifest.getFileType().ordinal() > 0 ? new InflaterInputStream(fileStream) : fileStream)) {
-			try (OutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
-				int read; byte[] buffer = new byte[4096];
-				while((read = input.read(buffer)) != -1) {
-					output.write(buffer, 0, read);
-					record(read);
-					total += read;
-					progress = (float) total / manifest.getSizeCompressed();
-					if (patcher.isFinished())
-						return;
+		long total = 0;
+		try (CloseableHttpResponse response = client.execute(HttpUtil.getRequest(uri, "l3cdn.riotgames.com"))) {
+			Validate.require(response.getStatusLine().getStatusCode() == 200, "Http responded with invalid code." + response.getStatusLine().getStatusCode(), IOException.class);
+			try (InputStream stream = response.getEntity().getContent()) {
+				try (InputStream input = manifest.getFileType().ordinal() > 0 ? new InflaterInputStream(stream) : stream) {
+					try (OutputStream output = new BufferedOutputStream(new FileOutputStream(target))) {
+						int read; byte[] buffer = new byte[4096];
+						while ((read = input.read(buffer)) != -1) {
+							output.write(buffer, 0, read);
+							record(read);
+							total += read;
+							progress = (float) total / manifest.getSizeCompressed();
+							if (patcher.isFinished())
+								return;
+						}
+					}
 				}
 			}
 		}
@@ -92,10 +101,8 @@ public class FileWorker extends Worker {
 	@Override
 	public void run() {
 		try {
-			try (HttpClient client = new HttpClient("l3cdn.riotgames.com")) {
-				client.throwExceptionWhenNot200 = true;
-				client.setErrorHandler(HTTP_ERROR_HANDLER);
-				
+			URIBuilder builder = new URIBuilder().setScheme("http").setHost("l3cdn.riotgames.com");
+			try (CloseableHttpClient client = HttpUtil.getDefaultClient()) {
 				RiotFileManifest task;
 				while (true) {
 					synchronized (patcher.getPendingFiles()) {
@@ -107,11 +114,11 @@ public class FileWorker extends Worker {
 					
 					startTime = System.currentTimeMillis();
 					status = task.getName();
-					download(task, client);
+					download(task, builder, client);
 					startTime = -1;
 				}
 			}
-		} catch (IOException | NoSuchAlgorithmException ex) {
+		} catch (IOException | NoSuchAlgorithmException | URISyntaxException ex) {
 			Logger.getLogger(FileWorker.class.getName()).log(Level.SEVERE, null, ex);
 			if (patcher.getError() == null)
 				patcher.error(ex);

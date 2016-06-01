@@ -37,6 +37,7 @@ public class DifferenceWorker extends Worker {
 		this.filter = filter;
 		this.offset = offset;
 		this.length = length;
+		setName("Summoners-Difference-Worker");
 	}
 	
 	/**
