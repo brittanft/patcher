@@ -581,14 +581,14 @@ public class ArchivePatcher extends PatchTask {
     
 	public static void main(String[] args) throws IOException {
 		System.out.println((2142495409L & 0xFFFFFFFFL));
-		/*String version = RiotFileUtil.getReleaseName(316);
+		String version = RiotFileUtil.getReleaseName(316);
 		System.out.println("Version: " + version);
-		RiotReleaseManifestFile file = RiotReleaseManifestFile.download("live", "projects", "lol_game_client", version);
-		for (RiotFileManifest manifest : file.getFiles())
-			System.out.println(manifest.getPath() + "/" + manifest.getName());*/
+		
+		//RiotReleaseManifestFile file = RiotReleaseManifestFile.download("live", "projects", "lol_game_client", version);
+		//for (RiotFileManifest manifest : file.getFiles())
+		//	System.out.println(manifest.getPath() + "/" + manifest.getName());
+		
 		try (RiotArchiveFile rafArchive = new RiotArchiveFile(Paths.get("Archive_114251952.raf"), Paths.get("Archive_114251952.raf.dat"))) {
-															/*RiotFileUtil.getRADS("projects/lol_game_client/filearchives/0.0.0.235/Archive_2.raf"),
-															RiotFileUtil.getRADS("projects/lol_game_client/filearchives/0.0.0.235/Archive_2.raf.dat"))) {*/
 			
 			for (RiotFile file : rafArchive.getFiles())
 				if (file.getName().contains(".list") || file.getName().contains(".anm") || file.getName().contains(".skl") || file.getName().contains(".skn"))
